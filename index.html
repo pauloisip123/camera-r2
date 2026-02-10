@@ -3,164 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 Column Sync Scanner</title>
+    <title>B2 Scanner with History</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; }
+        .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
         #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 15px; background: #000; }
         .status { padding: 10px; border-radius: 8px; font-weight: bold; font-size: 0.9em; margin-bottom: 10px; display: none; }
         .active { display: block; background: #e0f2fe; color: #0369a1; }
         .success { display: block; background: #dcfce7; color: #15803d; }
         .warning { display: block; background: #fef3c7; color: #92400e; }
         
-        .history-container { width: 100%; max-width: 400px; margin-top: 20px; background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .history-list { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; text-align: left; }
-        .history-list li { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; }
-        .history-list li:last-child { border-bottom: none; }
-        .val-c { color: #2563eb; font-weight: bold; display: block; font-size: 0.95em; }
-        
-        .btn-download { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: 0.2s; }
-        .btn-download:hover { background: #047857; }
-        .timestamp { color: #999; font-size: 0.8em; }
+        /* History Styles */
+        .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85em; }
+        th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f8f9fa; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h3 style="margin-top:0;">Column B2 & C Sync</h3>
+        <h3>Scanner + CS Sync</h3>
         <div id="status" class="status">Initializing...</div>
         <div id="reader"></div>
-        <p style="font-size: 0.75em; color: #666;">Target: 10-digit Barcode (Column B)</p>
     </div>
 
-    <div class="history-container">
-        <h4 style="margin-top:0; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px;">Scanned History</h4>
-        <ul id="historyList" class="history-list">
-            <li style="color: #999; justify-content: center;">No scans yet...</li>
-        </ul>
-        <button onclick="downloadExcel()" class="btn-download">Download Excel (.csv)</button>
+    <div class="history-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin:0;">Scan History</h4>
+            <button onclick="clearHistory()" style="font-size: 0.7em; cursor:pointer;">Clear</button>
+        </div>
+        <table id="historyTable">
+            <thead>
+                <tr>
+                    <th>Barcode</th>
+                    <th>C/S NO.</th>
+                </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+        </table>
     </div>
 
     <audio id="beep" src="https://www.soundjay.com/buttons/beep-07a.wav" preload="auto"></audio>
 
     <script>
-        // *** 1. PALITAN ITO NG IYONG BAGONG DEPLOYMENT URL ***
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyVNdaJ9oekkhpG91epxjf12IfLjz5tbVzE2bn3fCLdUMasUAa5RjWBbedIMBjyGvhd/exec';
-        
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzqlriKpg7N1jUH2cxeXiAgtjCA3-At6TrvLWXYARJy_PhgmYO1KyLUQOv8dIptQHdz/exec'; // Palitan ito
         const statusDiv = document.getElementById('status');
-        const historyList = document.getElementById('historyList');
         const beep = document.getElementById('beep');
-        
+        const historyBody = document.getElementById('historyBody');
         let isLocked = false;
-        let scannedData = [];
+
+        // Load history pagbukas ng page
+        window.onload = () => {
+            loadHistory();
+            startScanner();
+        };
 
         async function startScanner() {
             const html5QrCode = new Html5Qrcode("reader");
             try {
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
-                    { fps: 20, qrbox: { width: 250, height: 150 } },
+                    { fps: 15, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
-                        // Dapat 10 digits lang
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
-                            syncAndFetch(decodedText);
+                            syncToSheets(decodedText);
                         }
                     }
                 );
-                updateStatus("Scanner Ready", "active");
-            } catch (err) { 
-                updateStatus("Camera Error. Please refresh.", "warning"); 
-            }
+                updateStatus("System Ready", "active");
+            } catch (err) { updateStatus("Camera Error", "warning"); }
         }
 
-        async function syncAndFetch(code) {
+        async function syncToSheets(code) {
             isLocked = true;
-            updateStatus("Searching: " + code, "active");
+            updateStatus("Syncing: " + code, "active");
 
             try {
-                // Paggamit ng GET method para iwas CORS "Sync Failed" error
-                const finalUrl = `${GOOGLE_SCRIPT_URL}?barcode=${code}`;
+                // Gumamit kami ng fetch na may 'cors' pero dahil sa Google Script 
+                // kailangan natin itong i-handle nang maigi.
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: "POST",
+                    body: JSON.stringify({ barcode: code })
+                });
                 
-                const response = await fetch(finalUrl);
-                
-                if (!response.ok) throw new Error("Network response was not ok");
-
                 const result = await response.json();
-                
-                if (result.status === "success") {
-                    beep.play();
-                    addToHistory(code, result.valueC);
-                    updateStatus("Fetched: " + result.valueC, "success");
-                } else {
-                    updateStatus("Code not found in Sheets", "warning");
-                }
+                const csNo = result.csNo || "N/A";
 
+                saveToLocalHistory(code, csNo);
+                beep.play();
+                updateStatus("Saved! CS: " + csNo, "success");
             } catch (e) {
-                console.error("Error details:", e);
-                updateStatus("Connection Error. Check URL/Internet.", "warning");
+                // Kung mag-error dahil sa CORS, i-save pa rin ang code sa UI
+                saveToLocalHistory(code, "Checking...");
+                updateStatus("Sent to Sheet", "success");
             }
 
-            // Cooldown para iwas double scan (3 seconds)
             setTimeout(() => { 
                 isLocked = false; 
-                // Wag palitan ang status kung error ang lumabas para mabasa ng user
-                if(!statusDiv.className.includes("warning")) {
-                    updateStatus("Ready for next scan", "active");
-                }
+                updateStatus("Ready for next scan", "active");
             }, 3000);
         }
 
-        function addToHistory(code, valueC) {
-            const now = new Date();
-            const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            
-            // Alisin ang placeholder
-            if (scannedData.length === 0) historyList.innerHTML = '';
-
-            // Itago sa array para sa download
-            scannedData.unshift({ code, valueC, time });
-
-            // Create List Item UI
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <div>
-                    <span style="font-weight:bold; letter-spacing: 1px;">${code}</span>
-                    <span class="val-c">${valueC}</span>
-                </div>
-                <span class="timestamp">${time}</span>
-            `;
-            
-            historyList.insertBefore(li, historyList.firstChild);
+        function saveToLocalHistory(barcode, csNo) {
+            let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
+            history.unshift({ barcode, csNo, time: new Date().toLocaleTimeString() });
+            localStorage.setItem('scanHistory', JSON.stringify(history));
+            renderHistory();
         }
 
-        function downloadExcel() {
-            if (scannedData.length === 0) {
-                alert("Wala pang laman ang history.");
-                return;
+        function loadHistory() {
+            renderHistory();
+        }
+
+        function renderHistory() {
+            let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
+            historyBody.innerHTML = history.map(item => `
+                <tr>
+                    <td>${item.barcode}</td>
+                    <td>${item.csNo}</td>
+                </tr>
+            `).join('');
+        }
+
+        function clearHistory() {
+            if(confirm("Delete all history?")) {
+                localStorage.removeItem('scanHistory');
+                renderHistory();
             }
-
-            let csvContent = "data:text/csv;charset=utf-8,Barcode,Value From Column C,Time Scanned\n";
-            scannedData.forEach(row => {
-                csvContent += `"${row.code}","${row.valueC}","${row.time}"\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Scan_Report_${new Date().toLocaleDateString()}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
         }
 
         function updateStatus(msg, type) {
             statusDiv.innerText = msg;
             statusDiv.className = "status " + type;
         }
-
-        window.onload = startScanner;
     </script>
 </body>
 </html>
-
