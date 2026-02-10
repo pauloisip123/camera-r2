@@ -3,132 +3,172 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 Scanner with History</title>
+    <title>B2 Barcode Scanner Sync</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
         .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
         #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 15px; background: #000; }
-        .status { padding: 10px; border-radius: 8px; font-weight: bold; font-size: 0.9em; margin-bottom: 10px; display: none; }
+        
+        .status { padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.9em; margin-bottom: 15px; display: none; }
         .active { display: block; background: #e0f2fe; color: #0369a1; }
         .success { display: block; background: #dcfce7; color: #15803d; }
         .warning { display: block; background: #fef3c7; color: #92400e; }
+
+        /* History Table Styles */
+        .history-card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .history-header h4 { margin: 0; color: #0369a1; }
         
-        /* History Styles */
-        .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85em; }
-        th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f8f9fa; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        th { text-align: left; padding: 10px; border-bottom: 2px solid #eee; background: #fafafa; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        tr:nth-child(even) { background: #fdfdfd; }
+
+        .btn-clear { background: #fee2e2; color: #dc2626; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8em; }
+        .btn-clear:hover { background: #fecaca; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h3>Scanner + CS Sync</h3>
-        <div id="status" class="status">Initializing...</div>
+        <h3 style="margin-top:0;">Column B2 Sync</h3>
+        <div id="status" class="status">Initializing Camera...</div>
         <div id="reader"></div>
+        <p style="font-size: 0.75em; color: #666;">Target: Column B (10 Digits) <br> Auto-fetch: C/S NO. (Column C)</p>
     </div>
 
     <div class="history-card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="margin:0;">Scan History</h4>
-            <button onclick="clearHistory()" style="font-size: 0.7em; cursor:pointer;">Clear</button>
+        <div class="history-header">
+            <h4>Scan History</h4>
+            <button class="btn-clear" onclick="clearHistory()">Clear History</button>
         </div>
-        <table id="historyTable">
-            <thead>
-                <tr>
-                    <th>Barcode</th>
-                    <th>C/S NO.</th>
-                </tr>
-            </thead>
-            <tbody id="historyBody"></tbody>
-        </table>
+        <div style="max-height: 300px; overflow-y: auto;">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Barcode</th>
+                        <th>C/S NO.</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    </tbody>
+            </table>
+        </div>
     </div>
 
     <audio id="beep" src="https://www.soundjay.com/buttons/beep-07a.wav" preload="auto"></audio>
 
     <script>
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzqlriKpg7N1jUH2cxeXiAgtjCA3-At6TrvLWXYARJy_PhgmYO1KyLUQOv8dIptQHdz/exec'; // Palitan ito
+        // --- CONFIGURATION ---
+        // IPALIT DITO ANG IYONG GOOGLE SCRIPT WEB APP URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyhpjS0NIVOb82J0OcwPoPtDasKwLoEls4ajsowxF0lbU5EkiTT-YlYkkhJVjdTPwGd/exec';
+        
         const statusDiv = document.getElementById('status');
         const beep = document.getElementById('beep');
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
 
-        // Load history pagbukas ng page
+        // 1. Pag-load ng Page, ipakita ang naka-save na history
         window.onload = () => {
-            loadHistory();
+            renderHistory();
             startScanner();
         };
 
+        // 2. Initialize Scanner
         async function startScanner() {
             const html5QrCode = new Html5Qrcode("reader");
             try {
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
-                    { fps: 15, qrbox: { width: 250, height: 150 } },
+                    { fps: 20, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
+                        // Validation: 10 digits at hindi busy
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncToSheets(decodedText);
                         }
                     }
                 );
                 updateStatus("System Ready", "active");
-            } catch (err) { updateStatus("Camera Error", "warning"); }
+            } catch (err) { 
+                updateStatus("Camera Error: Check permissions", "warning"); 
+            }
         }
 
+        // 3. Sync sa Google Sheets at Pagkuha ng C/S NO.
         async function syncToSheets(code) {
             isLocked = true;
-            updateStatus("Syncing: " + code, "active");
+            updateStatus("Checking Sheet for: " + code, "active");
 
             try {
-                // Gumamit kami ng fetch na may 'cors' pero dahil sa Google Script 
-                // kailangan natin itong i-handle nang maigi.
                 const response = await fetch(GOOGLE_SCRIPT_URL, {
                     method: "POST",
                     body: JSON.stringify({ barcode: code })
                 });
                 
                 const result = await response.json();
-                const csNo = result.csNo || "N/A";
+                
+                // Kunin ang data na binalik ng Google Script
+                const barcodeValue = result.barcode || code;
+                const csNoValue = result.csNo || "Not Found";
 
-                saveToLocalHistory(code, csNo);
+                // I-save sa Local Storage para permanent
+                saveToLocalHistory(barcodeValue, csNoValue);
+                
                 beep.play();
-                updateStatus("Saved! CS: " + csNo, "success");
+                updateStatus("Success! CS No: " + csNoValue, "success");
+
             } catch (e) {
-                // Kung mag-error dahil sa CORS, i-save pa rin ang code sa UI
-                saveToLocalHistory(code, "Checking...");
-                updateStatus("Sent to Sheet", "success");
+                console.error("Sync Error:", e);
+                updateStatus("Network Error: Check Internet", "warning");
+                // I-save pa rin ang barcode kahit may error (Optional)
+                saveToLocalHistory(code, "Error Connect");
             }
 
+            // Cooldown para hindi mag-scan nang paulit-ulit agad
             setTimeout(() => { 
                 isLocked = false; 
-                updateStatus("Ready for next scan", "active");
+                if(!statusDiv.innerText.includes("Error")) {
+                    updateStatus("Ready for next scan", "active");
+                }
             }, 3000);
         }
 
+        // 4. Local Storage Functions (Persistent History)
         function saveToLocalHistory(barcode, csNo) {
             let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
-            history.unshift({ barcode, csNo, time: new Date().toLocaleTimeString() });
-            localStorage.setItem('scanHistory', JSON.stringify(history));
-            renderHistory();
-        }
+            
+            // Ilagay sa pinakataas ang pinakabago
+            history.unshift({ 
+                barcode: barcode, 
+                csNo: csNo, 
+                timestamp: new Date().toLocaleTimeString() 
+            });
 
-        function loadHistory() {
+            // I-limit lang sa huling 50 scans para hindi bumagal
+            if(history.length > 50) history.pop();
+
+            localStorage.setItem('scanHistory', JSON.stringify(history));
             renderHistory();
         }
 
         function renderHistory() {
             let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
+            if (history.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#999;">No scan history yet</td></tr>';
+                return;
+            }
+            
             historyBody.innerHTML = history.map(item => `
                 <tr>
-                    <td>${item.barcode}</td>
-                    <td>${item.csNo}</td>
+                    <td><strong>${item.barcode}</strong><br><small style="color:#999">${item.timestamp}</small></td>
+                    <td style="color: #0369a1; font-weight: bold;">${item.csNo}</td>
                 </tr>
             `).join('');
         }
 
         function clearHistory() {
-            if(confirm("Delete all history?")) {
+            if(confirm("Sigurado ka bang buburahin ang lahat ng history?")) {
                 localStorage.removeItem('scanHistory');
                 renderHistory();
             }
