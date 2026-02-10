@@ -31,7 +31,7 @@
         <h3 style="margin-top:0;">Column B2 & C Sync</h3>
         <div id="status" class="status">Initializing...</div>
         <div id="reader"></div>
-        <p style="font-size: 0.75em; color: #666;">Scan 10-digit barcode to fetch Column C</p>
+        <p style="font-size: 0.75em; color: #666;">Target: 10-digit Barcode (Column B)</p>
     </div>
 
     <div class="history-container">
@@ -45,7 +45,7 @@
     <audio id="beep" src="https://www.soundjay.com/buttons/beep-07a.wav" preload="auto"></audio>
 
     <script>
-        // *** PALITAN ITO NG IYONG CURRENT DEPLOYMENT URL ***
+        // *** 1. PALITAN ITO NG IYONG BAGONG DEPLOYMENT URL ***
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzek9TsZori_e0QWjDI1W678BTyT95ng7I_0lxa8NJB0PXGuURDl87ig6K1fSgn-w7r/exec';
         
         const statusDiv = document.getElementById('status');
@@ -62,7 +62,7 @@
                     { facingMode: "environment" }, 
                     { fps: 20, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
-                        // Regex for 10 digits
+                        // Dapat 10 digits lang
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncAndFetch(decodedText);
                         }
@@ -70,46 +70,42 @@
                 );
                 updateStatus("Scanner Ready", "active");
             } catch (err) { 
-                updateStatus("Camera Error: " + err, "warning"); 
+                updateStatus("Camera Error. Please refresh.", "warning"); 
             }
         }
 
         async function syncAndFetch(code) {
             isLocked = true;
-            updateStatus("Fetching data for: " + code, "active");
+            updateStatus("Searching: " + code, "active");
 
             try {
-                // Nagpapadala ng POST request sa Google Script
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: "POST",
-                    body: JSON.stringify({ barcode: code })
-                });
+                // Paggamit ng GET method para iwas CORS "Sync Failed" error
+                const finalUrl = `${GOOGLE_SCRIPT_URL}?barcode=${code}`;
                 
-                // Inaantay ang JSON response (yung status at valueC)
+                const response = await fetch(finalUrl);
+                
+                if (!response.ok) throw new Error("Network response was not ok");
+
                 const result = await response.json();
                 
                 if (result.status === "success") {
-                    const valueFromC = result.valueC;
-                    
-                    // Play sound
                     beep.play();
-                    
-                    // Update list and UI
-                    addToHistory(code, valueFromC);
-                    updateStatus("Success: " + valueFromC, "success");
+                    addToHistory(code, result.valueC);
+                    updateStatus("Fetched: " + result.valueC, "success");
                 } else {
-                    updateStatus("Error in Script", "warning");
+                    updateStatus("Code not found in Sheets", "warning");
                 }
 
             } catch (e) {
-                console.error(e);
-                updateStatus("Sync Failed (Check Internet/URL)", "warning");
+                console.error("Error details:", e);
+                updateStatus("Connection Error. Check URL/Internet.", "warning");
             }
 
-            // Cooldown para hindi mag-double scan agad
+            // Cooldown para iwas double scan (3 seconds)
             setTimeout(() => { 
                 isLocked = false; 
-                if(!statusDiv.innerText.includes("Error")) {
+                // Wag palitan ang status kung error ang lumabas para mabasa ng user
+                if(!statusDiv.className.includes("warning")) {
                     updateStatus("Ready for next scan", "active");
                 }
             }, 3000);
@@ -119,38 +115,33 @@
             const now = new Date();
             const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             
-            // Alisin ang "No scans yet" message
+            // Alisin ang placeholder
             if (scannedData.length === 0) historyList.innerHTML = '';
 
-            // Itago sa array para sa download feature
+            // Itago sa array para sa download
             scannedData.unshift({ code, valueC, time });
 
-            // Gawa ng bagong list item
+            // Create List Item UI
             const li = document.createElement('li');
             li.innerHTML = `
                 <div>
-                    <span style="font-weight:bold;">${code}</span>
+                    <span style="font-weight:bold; letter-spacing: 1px;">${code}</span>
                     <span class="val-c">${valueC}</span>
                 </div>
                 <span class="timestamp">${time}</span>
             `;
             
-            // Ilagay sa pinakataas ng listahan
             historyList.insertBefore(li, historyList.firstChild);
         }
 
         function downloadExcel() {
             if (scannedData.length === 0) {
-                alert("Wala pang data na ida-download.");
+                alert("Wala pang laman ang history.");
                 return;
             }
 
-            // Header ng CSV
-            let csvContent = "data:text/csv;charset=utf-8,Barcode,Value (Column C),Time Scanned\n";
-            
-            // Rows ng CSV
+            let csvContent = "data:text/csv;charset=utf-8,Barcode,Value From Column C,Time Scanned\n";
             scannedData.forEach(row => {
-                // Nilagyan ng quotes para iwas error sa commas
                 csvContent += `"${row.code}","${row.valueC}","${row.time}"\n`;
             });
 
@@ -168,9 +159,7 @@
             statusDiv.className = "status " + type;
         }
 
-        // Start agad pagbukas ng page
         window.onload = startScanner;
     </script>
 </body>
-
 </html>
