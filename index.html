@@ -3,51 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 Barcode Scanner Sync</title>
+    <title>B2 Scanner - No Duplicates</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
-        .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; box-sizing: border-box; }
         #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 15px; background: #000; }
         
         .status { padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.9em; margin-bottom: 15px; display: none; }
         .active { display: block; background: #e0f2fe; color: #0369a1; }
         .success { display: block; background: #dcfce7; color: #15803d; }
-        .warning { display: block; background: #fef3c7; color: #92400e; }
+        .warning { display: block; background: #fee2e2; color: #dc2626; border: 2px solid #dc2626; animation: shake 0.5s; }
 
-        /* History Table Styles */
-        .history-card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .history-header h4 { margin: 0; color: #0369a1; }
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+
+        /* History Section */
+        .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); box-sizing: border-box; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
+        .history-header h4 { margin: 0; color: #333; }
         
+        .table-wrapper { max-height: 400px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-        th { text-align: left; padding: 10px; border-bottom: 2px solid #eee; background: #fafafa; }
-        td { padding: 10px; border-bottom: 1px solid #eee; }
-        tr:nth-child(even) { background: #fdfdfd; }
-
-        .btn-clear { background: #fee2e2; color: #dc2626; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8em; }
-        .btn-clear:hover { background: #fecaca; }
+        th { text-align: left; padding: 10px; background: #f8f9fa; position: sticky; top: 0; }
+        td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        
+        .btn-clear { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.75em; }
+        .cs-val { font-weight: bold; color: #0369a1; }
+        .time-val { font-size: 0.7em; color: #94a3b8; display: block; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h3 style="margin-top:0;">Column B2 Sync</h3>
-        <div id="status" class="status">Initializing Camera...</div>
+        <h3 style="margin:0 0 15px 0; color: #1e293b;">B2 Column Sync</h3>
+        <div id="status" class="status">Initializing...</div>
         <div id="reader"></div>
-        <p style="font-size: 0.75em; color: #666;">Target: Column B (10 Digits) <br> Auto-fetch: C/S NO. (Column C)</p>
+        <p style="font-size: 0.75em; color: #64748b; margin: 0;">Scan 10-digit barcodes only</p>
     </div>
 
     <div class="history-card">
         <div class="history-header">
             <h4>Scan History</h4>
-            <button class="btn-clear" onclick="clearHistory()">Clear History</button>
+            <button class="btn-clear" onclick="clearHistory()">Clear All</button>
         </div>
-        <div style="max-height: 300px; overflow-y: auto;">
+        <div class="table-wrapper">
             <table id="historyTable">
                 <thead>
                     <tr>
-                        <th>Barcode</th>
+                        <th>Details</th>
                         <th>C/S NO.</th>
                     </tr>
                 </thead>
@@ -58,24 +67,24 @@
     </div>
 
     <audio id="beep" src="https://www.soundjay.com/buttons/beep-07a.wav" preload="auto"></audio>
+    <audio id="error-sound" src="https://www.soundjay.com/buttons/beep-05.wav" preload="auto"></audio>
 
     <script>
-        // --- CONFIGURATION ---
-        // IPALIT DITO ANG IYONG GOOGLE SCRIPT WEB APP URL
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9lhA9WYPUqMaIM7pY2uITt6bBgZKNdB0zMWHVdOzoqtc_H5CNBXiUCmVJf9-gWzJ8/exec';
+        // --- ILAGAY DITO ANG IYONG GOOGLE SCRIPT URL ---
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZ7iarY3xBdnqTAbC5_pDD0QFAUQE6gQ1kpvdgKUQYEINfc8_3HZ1UaBroyIwQNSO_/exec';
         
         const statusDiv = document.getElementById('status');
         const beep = document.getElementById('beep');
+        const errSound = document.getElementById('error-sound');
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
 
-        // 1. Pag-load ng Page, ipakita ang naka-save na history
+        // Load data on start
         window.onload = () => {
             renderHistory();
             startScanner();
         };
 
-        // 2. Initialize Scanner
         async function startScanner() {
             const html5QrCode = new Html5Qrcode("reader");
             try {
@@ -83,22 +92,21 @@
                     { facingMode: "environment" }, 
                     { fps: 20, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
-                        // Validation: 10 digits at hindi busy
+                        // Dapat 10 digits at hindi naka-lock ang scanner
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncToSheets(decodedText);
                         }
                     }
                 );
-                updateStatus("System Ready", "active");
+                updateStatus("Scanner Ready", "active");
             } catch (err) { 
-                updateStatus("Camera Error: Check permissions", "warning"); 
+                updateStatus("Camera Error", "warning"); 
             }
         }
 
-        // 3. Sync sa Google Sheets at Pagkuha ng C/S NO.
         async function syncToSheets(code) {
             isLocked = true;
-            updateStatus("Checking Sheet for: " + code, "active");
+            updateStatus("Checking: " + code, "active");
 
             try {
                 const response = await fetch(GOOGLE_SCRIPT_URL, {
@@ -108,68 +116,61 @@
                 
                 const result = await response.json();
                 
-                // Kunin ang data na binalik ng Google Script
-                const barcodeValue = result.barcode || code;
-                const csNoValue = result.csNo || "Not Found";
-
-                // I-save sa Local Storage para permanent
-                saveToLocalHistory(barcodeValue, csNoValue);
-                
-                beep.play();
-                updateStatus("Success! CS No: " + csNoValue, "success");
+                if (result.status === "error") {
+                    // DUPLICATE FOUND
+                    errSound.play();
+                    updateStatus("DUPLICATE: " + code, "warning");
+                    alert("⚠️ DUPLICATE DETECTED!\nBarcode: " + code + " is already in the sheet.");
+                } else {
+                    // SUCCESS
+                    const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    saveToLocalHistory(result.barcode, result.csNo, ts);
+                    beep.play();
+                    updateStatus("Success! CS: " + result.csNo, "success");
+                }
 
             } catch (e) {
-                console.error("Sync Error:", e);
-                updateStatus("Network Error: Check Internet", "warning");
-                // I-save pa rin ang barcode kahit may error (Optional)
-                saveToLocalHistory(code, "Error Connect");
+                console.error(e);
+                updateStatus("Connection Error", "warning");
             }
 
-            // Cooldown para hindi mag-scan nang paulit-ulit agad
+            // Cooldown 3 seconds bago pwedeng mag-scan ulit
             setTimeout(() => { 
                 isLocked = false; 
-                if(!statusDiv.innerText.includes("Error")) {
-                    updateStatus("Ready for next scan", "active");
+                if(!statusDiv.innerText.includes("DUPLICATE")) {
+                    updateStatus("Scanner Ready", "active");
                 }
             }, 3000);
         }
 
-        // 4. Local Storage Functions (Persistent History)
-        function saveToLocalHistory(barcode, csNo) {
-            let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
-            
-            // Ilagay sa pinakataas ang pinakabago
-            history.unshift({ 
-                barcode: barcode, 
-                csNo: csNo, 
-                timestamp: new Date().toLocaleTimeString() 
-            });
-
-            // I-limit lang sa huling 50 scans para hindi bumagal
-            if(history.length > 50) history.pop();
-
-            localStorage.setItem('scanHistory', JSON.stringify(history));
+        function saveToLocalHistory(barcode, csNo, time) {
+            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
+            history.unshift({ barcode, csNo, time });
+            if(history.length > 100) history.pop(); // Limit to 100 rows
+            localStorage.setItem('scanHistory_B2', JSON.stringify(history));
             renderHistory();
         }
 
         function renderHistory() {
-            let history = JSON.parse(localStorage.getItem('scanHistory') || "[]");
+            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
             if (history.length === 0) {
-                historyBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#999;">No scan history yet</td></tr>';
+                historyBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:20px;">No history found</td></tr>';
                 return;
             }
-            
             historyBody.innerHTML = history.map(item => `
                 <tr>
-                    <td><strong>${item.barcode}</strong><br><small style="color:#999">${item.timestamp}</small></td>
-                    <td style="color: #0369a1; font-weight: bold;">${item.csNo}</td>
+                    <td>
+                        <strong>${item.barcode}</strong>
+                        <span class="time-val">${item.time}</span>
+                    </td>
+                    <td class="cs-val">${item.csNo}</td>
                 </tr>
             `).join('');
         }
 
         function clearHistory() {
-            if(confirm("Sigurado ka bang buburahin ang lahat ng history?")) {
-                localStorage.removeItem('scanHistory');
+            if(confirm("Buharin lahat ng history sa phone na ito?")) {
+                localStorage.removeItem('scanHistory_B2');
                 renderHistory();
             }
         }
@@ -181,5 +182,3 @@
     </script>
 </body>
 </html>
-
-
