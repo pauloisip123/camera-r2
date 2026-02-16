@@ -61,7 +61,7 @@
                     </tr>
                 </thead>
                 <tbody id="historyBody">
-                </tbody>
+                    </tbody>
             </table>
         </div>
     </div>
@@ -79,7 +79,6 @@
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
 
-        // Load data on start
         window.onload = () => {
             renderHistory();
             startScanner();
@@ -90,9 +89,8 @@
             try {
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
-                    { fps: 25, qrbox: { width: 250, height: 150 } }, // FPS optimized for speed
+                    { fps: 25, qrbox: { width: 250, height: 150 } }, // Mas mataas na FPS para sa mas mabilis na pag-detect
                     (decodedText) => {
-                        // Dapat 10 digits at hindi naka-lock ang scanner
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncToSheets(decodedText);
                         }
@@ -117,16 +115,14 @@
                 const result = await response.json();
                 
                 if (result.status === "error") {
-                    // DUPLICATE FOUND
                     errSound.play();
                     updateStatus("⚠️ DUPLICATE: " + code, "warning");
-                    // Tinanggal ang alert() para mas mabilis ang workflow
+                    // Inalis ang alert() para hindi huminto ang pag-scan
                 } else {
-                    // SUCCESS
                     const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     saveToLocalHistory(result.barcode, result.csNo, ts);
                     beep.play();
-                    updateStatus("✅ SUCCESS! CS: " + result.csNo, "success");
+                    updateStatus("✅ Success! CS: " + result.csNo, "success");
                 }
 
             } catch (e) {
@@ -134,12 +130,11 @@
                 updateStatus("Connection Error", "warning");
             }
 
-            // MABILIS NA RESET: 500ms (0.5 seconds) lang na cooldown 
-            // para hindi mag-loop scan sa parehong barcode pero ready na agad sa susunod.
+            // MABILIS NA RESET: 0.5 seconds lang imbes na 3 seconds
             setTimeout(() => { 
                 isLocked = false; 
-                // Kung hindi duplicate, ibalik sa Ready status
-                if (!statusDiv.className.includes("warning")) {
+                // Kung hindi duplicate ang huling scan, ibalik sa blue status
+                if(!statusDiv.innerText.includes("DUPLICATE")) {
                     updateStatus("Scanner Ready", "active");
                 }
             }, 500); 
@@ -148,7 +143,7 @@
         function saveToLocalHistory(barcode, csNo, time) {
             let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
             history.unshift({ barcode, csNo, time });
-            if(history.length > 100) history.pop(); // Limit to 100 rows
+            if(history.length > 100) history.pop();
             localStorage.setItem('scanHistory_B2', JSON.stringify(history));
             renderHistory();
         }
