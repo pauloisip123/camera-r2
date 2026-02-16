@@ -1,205 +1,124 @@
 <!DOCTYPE html>
-<html lang="tl">
+<html>
 <head>
-    <meta charset="UTF-8">
+    <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 Scanner - No Duplicates</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <title>High-Speed Barcode Scanner</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        .card { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; box-sizing: border-box; }
-        #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 15px; background: #000; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f7f6; }
+        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
+        h2 { color: #333; margin-bottom: 20px; }
         
-        .status { padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.9em; margin-bottom: 15px; display: none; }
-        .active { display: block; background: #e0f2fe; color: #0369a1; }
-        .success { display: block; background: #dcfce7; color: #15803d; }
-        .warning { display: block; background: #fee2e2; color: #dc2626; border: 2px solid #dc2626; animation: shake 0.5s; }
+        /* Input Box Styling */
+        #barcodeInput { width: 100%; padding: 15px; font-size: 1.2rem; border: 2px solid #ddd; border-radius: 8px; outline: none; transition: border-color 0.3s; box-sizing: border-box; }
+        #barcodeInput:focus { border-color: #2ecc71; box-shadow: 0 0 8px rgba(46, 204, 113, 0.2); }
 
-        @keyframes shake {
-            0% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            50% { transform: translateX(5px); }
-            75% { transform: translateX(-5px); }
-            100% { transform: translateX(0); }
-        }
-
-        /* History Section */
-        .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); box-sizing: border-box; }
-        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
-        .history-header h4 { margin: 0; color: #333; }
+        /* Status & Feedback */
+        #statusBox { margin-top: 25px; min-height: 80px; padding: 10px; border-radius: 8px; background-color: #fafafa; display: flex; flex-direction: column; justify-content: center; }
+        .status-text { font-weight: bold; font-size: 1.1rem; margin: 5px 0; }
+        .cs-no { font-size: 1.5rem; color: #2c3e50; font-weight: 800; }
         
-        .table-wrapper { max-height: 400px; overflow-y: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-        th { text-align: left; padding: 10px; background: #f8f9fa; position: sticky; top: 0; }
-        td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        /* Ready Indicator */
+        .ready-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; background: #e8f5e9; color: #2e7d32; margin-bottom: 10px; font-weight: bold; }
         
-        .btn-clear { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.75em; }
-        .cs-val { font-weight: bold; color: #0369a1; }
-        .time-val { font-size: 0.7em; color: #94a3b8; display: block; }
+        /* Loading Spinner */
+        .spinner { display: none; margin: 10px auto; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #2ecc71; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h3 style="margin:0 0 15px 0; color: #1e293b;">B2 Column Sync</h3>
-        <div id="status" class="status">Initializing...</div>
-        <div id="reader"></div>
-        <p style="font-size: 0.75em; color: #64748b; margin: 0;">Scan 10-digit barcodes only</p>
-    </div>
-
-    <div class="history-card">
-        <div class="history-header">
-            <h4>Scan History</h4>
-            <button class="btn-clear" onclick="clearHistory()">Clear All</button>
-        </div>
-        <div class="table-wrapper">
-            <table id="historyTable">
-                <thead>
-                    <tr>
-                        <th>Details</th>
-                        <th>C/S NO.</th>
-                    </tr>
-                </thead>
-                <tbody id="historyBody">
-                    </tbody>
-            </table>
+    <div class="container">
+        <div class="ready-badge">● SYSTEM READY</div>
+        <h2>Scanner Pro</h2>
+        
+        <input type="text" id="barcodeInput" placeholder="Scan Barcode Here..." autofocus autocomplete="off">
+        
+        <div id="statusBox">
+            <div id="loader" class="spinner"></div>
+            <div id="statusMsg" class="status-text">Waiting for scan...</div>
+            <div id="csDisplay" class="cs-no"></div>
         </div>
     </div>
 
-    <audio id="beep" src="https://www.soundjay.com/buttons/beep-07a.wav" preload="auto"></audio>
-    <audio id="error-sound" src="https://www.soundjay.com/buttons/beep-05.wav" preload="auto"></audio>
+    <audio id="beepSound" src="https://www.soundjay.com/buttons/beep-07a.mp3" preload="auto"></audio>
 
     <script>
-        // --- ILAGAY DITO ANG IYONG GOOGLE SCRIPT URL ---
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyvcroBTiUSqD8j8MEZv9aJghOcZ2msWo_ixpRN5aK5yW8fOOLiRJLis9C02awkkpC4/exec';
-        
-        const statusDiv = document.getElementById('status');
-        const beep = document.getElementById('beep');
-        const errSound = document.getElementById('error-sound');
-        const historyBody = document.getElementById('historyBody');
-        let isLocked = false;
+        const barcodeInput = document.getElementById('barcodeInput');
+        const statusMsg = document.getElementById('statusMsg');
+        const csDisplay = document.getElementById('csDisplay');
+        const loader = document.getElementById('loader');
+        const beep = document.getElementById('beepSound');
 
-        // Load data on start
-        window.onload = () => {
-            renderHistory();
-            startScanner();
-        };
+        // URL ng iyong Google Web App
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwdChSmHAXoPIO-qk34spXDYmnjDROmexgLVTJBsdum6LfO0JD9wibdwHUJ-1RfyRDH/exec';
 
-        async function startScanner() {
-            const html5QrCode = new Html5Qrcode("reader");
-            try {
-                await html5QrCode.start(
-                    { facingMode: "environment" }, 
-                    { fps: 20, qrbox: { width: 250, height: 150 } },
-                    (decodedText) => {
-                        // Dapat 10 digits at hindi naka-lock ang scanner
-                        if (/^\d{10}$/.test(decodedText) && !isLocked) {
-                            syncToSheets(decodedText);
-                        }
-                    }
-                );
-                updateStatus("Scanner Ready", "active");
-            } catch (err) { 
-                updateStatus("Camera Error", "warning"); 
+        // 1. AUTO-FOCUS RECOVERY: Kahit saan mag-click, babalik sa input box
+        document.addEventListener('click', () => barcodeInput.focus());
+
+        barcodeInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                const barcode = barcodeInput.value.trim();
+                if (barcode) {
+                    processScan(barcode);
+                }
             }
-        }
+        });
 
-        async function syncToSheets(code) {
-            isLocked = true;
-            updateStatus("Checking: " + code, "active");
+        async function processScan(barcode) {
+            // --- STEP A: INSTANT READINESS ---
+            barcodeInput.value = ''; // Linisin agad ang box para sa susunod na scan
+            statusMsg.innerText = "Processing...";
+            statusMsg.style.color = "#f39c12";
+            csDisplay.innerText = "";
+            loader.style.display = "block";
+            
+            // Opsyonal: Beep sound agad para alam ng user na pumasok
+            // beep.play(); 
 
             try {
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: "POST",
-                    body: JSON.stringify({ barcode: code })
+                // --- STEP B: BACKGROUND SYNC ---
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Mahalaga ito kung direct Fetch ang gamit
+                    cache: 'no-cache',
+                    body: JSON.stringify({ barcode: barcode })
                 });
+
+                // Tandaan: Sa 'no-cors' mode, hindi natin mababasa ang JSON response.
+                // Kung gusto mong mabasa ang SUCCESS/ERROR at CS No, 
+                // kailangang gamitin ang google.script.run (kung naka-embed sa Sheets)
+                // O kaya ay i-configure ang CORS sa Apps Script.
                 
-                const result = await response.json();
-                
-                if (result.status === "error") {
-                    // DUPLICATE FOUND
-                    errSound.play();
-                    updateStatus("DUPLICATE: " + code, "warning");
-                    alert("⚠️ DUPLICATE DETECTED!\nBarcode: " + code + " is already in the sheet.");
-                } else {
-                    // SUCCESS
-                    const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    saveToLocalHistory(result.barcode, result.csNo, ts);
-                    beep.play();
-                    updateStatus("Success! CS: " + result.csNo, "success");
-                }
+                // GAMITIN ITO KUNG NAKA-EMBED SA GOOGLE SHEETS (HTML SERVICE):
+                google.script.run
+                    .withSuccessHandler(function(data) {
+                        loader.style.display = "none";
+                        const result = JSON.parse(data);
+                        
+                        if(result.status === "success") {
+                            statusMsg.innerText = "✅ SUCCESS";
+                            statusMsg.style.color = "#27ae60";
+                            csDisplay.innerText = result.csNo;
+                        } else {
+                            statusMsg.innerText = result.message;
+                            statusMsg.style.color = "#c0392b";
+                        }
+                    })
+                    .doPost_From_UI({ "barcode": barcode }); // Custom function name sa Code.gs
 
-            } catch (e) {
-                console.error(e);
-                updateStatus("Connection Error", "warning");
+            } catch (error) {
+                statusMsg.innerText = "❌ Connection Error";
+                statusMsg.style.color = "#c0392b";
+                loader.style.display = "none";
             }
 
-            // Cooldown 3 seconds bago pwedeng mag-scan ulit
-            setTimeout(() => { 
-                isLocked = false; 
-                if(!statusDiv.innerText.includes("DUPLICATE")) {
-                    updateStatus("Scanner Ready", "active");
-                }
-            }, 3000);
+            // --- STEP C: READY ULIT AGAD ---
+            barcodeInput.focus();
         }
 
-        function saveToLocalHistory(barcode, csNo, time) {
-            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
-            history.unshift({ barcode, csNo, time });
-            if(history.length > 100) history.pop(); // Limit to 100 rows
-            localStorage.setItem('scanHistory_B2', JSON.stringify(history));
-            renderHistory();
-        }
-
-        function renderHistory() {
-            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
-            if (history.length === 0) {
-                historyBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:20px;">No history found</td></tr>';
-                return;
-            }
-            historyBody.innerHTML = history.map(item => `
-                <tr>
-                    <td>
-                        <strong>${item.barcode}</strong>
-                        <span class="time-val">${item.time}</span>
-                    </td>
-                    <td class="cs-val">${item.csNo}</td>
-                </tr>
-            `).join('');
-        }
-
-        function clearHistory() {
-            if(confirm("Buharin lahat ng history sa phone na ito?")) {
-                localStorage.removeItem('scanHistory_B2');
-                renderHistory();
-            }
-        }
-
-        function updateStatus(msg, type) {
-            statusDiv.innerText = msg;
-            statusDiv.className = "status " + type;
-        }
+        // Bridge function para sa UI to Script communication
+        // Idagdag mo ito sa Code.gs mo
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
