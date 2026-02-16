@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 Scanner - No Duplicates</title>
+    <title>B2 Scanner - Ultra Fast</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
@@ -23,7 +23,6 @@
             100% { transform: translateX(0); }
         }
 
-        /* History Section */
         .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); box-sizing: border-box; }
         .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
         .history-header h4 { margin: 0; color: #333; }
@@ -60,8 +59,7 @@
                         <th>C/S NO.</th>
                     </tr>
                 </thead>
-                <tbody id="historyBody">
-                </tbody>
+                <tbody id="historyBody"></tbody>
             </table>
         </div>
     </div>
@@ -70,7 +68,6 @@
     <audio id="error-sound" src="https://www.soundjay.com/buttons/beep-05.wav" preload="auto"></audio>
 
     <script>
-        // --- IYONG GOOGLE SCRIPT URL ---
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwKQscPQ-TMY_gV88O-npFY50xlDnvrogDpT3WTYMhsOQOt-ZuTXM77dQffgcmrNOh0/exec';
         
         const statusDiv = document.getElementById('status');
@@ -78,6 +75,7 @@
         const errSound = document.getElementById('error-sound');
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
+        let lastScanned = "";
 
         window.onload = () => {
             renderHistory();
@@ -90,13 +88,13 @@
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
                     { 
-                        fps: 25, // TINAASAN ANG FPS PARA MABILIS MA-CAPTURE
-                        qrbox: { width: 250, height: 150 },
-                        aspectRatio: 1.0
+                        fps: 30, // Max speed for frame detection
+                        qrbox: { width: 280, height: 160 }
                     },
                     (decodedText) => {
-                        if (/^\d{10}$/.test(decodedText) && !isLocked) {
-                            syncToSheets(decodedText);
+                        // Iwas sa sunod-sunod na scan ng iisang barcode
+                        if (/^\d{10}$/.test(decodedText) && !isLocked && decodedText !== lastScanned) {
+                            processScan(decodedText);
                         }
                     }
                 );
@@ -106,50 +104,45 @@
             }
         }
 
-        async function syncToSheets(code) {
-            isLocked = true; // Lock agad para iwas double scan
-            updateStatus("Checking: " + code, "active");
+        function processScan(code) {
+            isLocked = true;
+            lastScanned = code;
+            beep.play();
 
-            try {
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: "POST",
-                    mode: 'no-cors', // Para sa mas mabilis na network handshake
-                    body: JSON.stringify({ barcode: code })
-                });
-                
-                // Dahil naka 'no-cors', hindi natin mababasa ang JSON response directly sa fetch standard.
-                // Pero dahil kailangan natin ang result.status, ibabalik natin sa normal fetch pero optimized:
-                const fastResponse = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: "POST",
-                    body: JSON.stringify({ barcode: code })
-                });
-                const result = await fastResponse.json();
-                
+            const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            
+            // OPTIMISTIC UPDATE: Ipakita agad sa history kahit wala pang sagot ang server
+            updateStatus("Syncing: " + code, "success");
+            saveToLocalHistory(code, "...", ts); 
+
+            // I-lock lang ng 100ms para super bilis mag-ready ulit
+            setTimeout(() => { 
+                isLocked = false; 
+                updateStatus("Scanner Ready", "active");
+            }, 100);
+
+            // Iwasan ang paulit-ulit na scan ng iisang item sa loob ng 2 segundo
+            setTimeout(() => { lastScanned = ""; }, 2000);
+
+            // REAL-TIME SYNC (BACKGROUND)
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                body: JSON.stringify({ barcode: code })
+            })
+            .then(res => res.json())
+            .then(result => {
                 if (result.status === "error") {
                     errSound.play();
                     updateStatus("DUPLICATE: " + code, "warning");
-                    // Inalis ang alert() para hindi ma-stuck ang scanner
+                    updateLocalHistoryStatus(code, "DUPLICATE");
                 } else {
-                    const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    saveToLocalHistory(result.barcode, result.csNo, ts);
-                    beep.play();
-                    updateStatus("Success! CS: " + result.csNo, "success");
+                    updateLocalHistoryStatus(code, result.csNo);
                 }
-
-            } catch (e) {
+            })
+            .catch(e => {
                 console.error(e);
-                updateStatus("Connection Error", "warning");
-            }
-
-            // --- SPEED OPTIMIZATION ---
-            // Mula 3 seconds, ginawang 300ms (0.3s) na lang ang cooldown. 
-            // Halos instant na ang pagiging "Ready" pagkatapos ng scan.
-            setTimeout(() => { 
-                isLocked = false; 
-                if(!statusDiv.innerText.includes("DUPLICATE")) {
-                    updateStatus("Scanner Ready", "active");
-                }
-            }, 300); 
+                updateLocalHistoryStatus(code, "Error");
+            });
         }
 
         function saveToLocalHistory(barcode, csNo, time) {
@@ -158,6 +151,16 @@
             if(history.length > 100) history.pop(); 
             localStorage.setItem('scanHistory_B2', JSON.stringify(history));
             renderHistory();
+        }
+
+        function updateLocalHistoryStatus(barcode, newCs) {
+            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
+            let item = history.find(h => h.barcode === barcode);
+            if (item) {
+                item.csNo = newCs;
+                localStorage.setItem('scanHistory_B2', JSON.stringify(history));
+                renderHistory();
+            }
         }
 
         function renderHistory() {
@@ -172,7 +175,7 @@
                         <strong>${item.barcode}</strong>
                         <span class="time-val">${item.time}</span>
                     </td>
-                    <td class="cs-val">${item.csNo}</td>
+                    <td class="cs-val" style="${item.csNo === 'DUPLICATE' ? 'color:red' : ''}">${item.csNo}</td>
                 </tr>
             `).join('');
         }
