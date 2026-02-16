@@ -1,124 +1,112 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <base target="_top">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>High-Speed Barcode Scanner</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f7f6; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
-        h2 { color: #333; margin-bottom: 20px; }
+<script>
+        // --- ILAGAY DITO ANG IYONG GOOGLE SCRIPT URL ---
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwdChSmHAXoPIO-qk34spXDYmnjDROmexgLVTJBsdum6LfO0JD9wibdwHUJ-1RfyRDH/exec';
         
-        /* Input Box Styling */
-        #barcodeInput { width: 100%; padding: 15px; font-size: 1.2rem; border: 2px solid #ddd; border-radius: 8px; outline: none; transition: border-color 0.3s; box-sizing: border-box; }
-        #barcodeInput:focus { border-color: #2ecc71; box-shadow: 0 0 8px rgba(46, 204, 113, 0.2); }
+        const statusDiv = document.getElementById('status');
+        const beep = document.getElementById('beep');
+        const errSound = document.getElementById('error-sound');
+        const historyBody = document.getElementById('historyBody');
+        let isLocked = false;
 
-        /* Status & Feedback */
-        #statusBox { margin-top: 25px; min-height: 80px; padding: 10px; border-radius: 8px; background-color: #fafafa; display: flex; flex-direction: column; justify-content: center; }
-        .status-text { font-weight: bold; font-size: 1.1rem; margin: 5px 0; }
-        .cs-no { font-size: 1.5rem; color: #2c3e50; font-weight: 800; }
-        
-        /* Ready Indicator */
-        .ready-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; background: #e8f5e9; color: #2e7d32; margin-bottom: 10px; font-weight: bold; }
-        
-        /* Loading Spinner */
-        .spinner { display: none; margin: 10px auto; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #2ecc71; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
+        // Load data on start
+        window.onload = () => {
+            renderHistory();
+            startScanner();
+        };
 
-    <div class="container">
-        <div class="ready-badge">● SYSTEM READY</div>
-        <h2>Scanner Pro</h2>
-        
-        <input type="text" id="barcodeInput" placeholder="Scan Barcode Here..." autofocus autocomplete="off">
-        
-        <div id="statusBox">
-            <div id="loader" class="spinner"></div>
-            <div id="statusMsg" class="status-text">Waiting for scan...</div>
-            <div id="csDisplay" class="cs-no"></div>
-        </div>
-    </div>
-
-    <audio id="beepSound" src="https://www.soundjay.com/buttons/beep-07a.mp3" preload="auto"></audio>
-
-    <script>
-        const barcodeInput = document.getElementById('barcodeInput');
-        const statusMsg = document.getElementById('statusMsg');
-        const csDisplay = document.getElementById('csDisplay');
-        const loader = document.getElementById('loader');
-        const beep = document.getElementById('beepSound');
-
-        // URL ng iyong Google Web App
-        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwdChSmHAXoPIO-qk34spXDYmnjDROmexgLVTJBsdum6LfO0JD9wibdwHUJ-1RfyRDH/exec';
-
-        // 1. AUTO-FOCUS RECOVERY: Kahit saan mag-click, babalik sa input box
-        document.addEventListener('click', () => barcodeInput.focus());
-
-        barcodeInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                const barcode = barcodeInput.value.trim();
-                if (barcode) {
-                    processScan(barcode);
-                }
-            }
-        });
-
-        async function processScan(barcode) {
-            // --- STEP A: INSTANT READINESS ---
-            barcodeInput.value = ''; // Linisin agad ang box para sa susunod na scan
-            statusMsg.innerText = "Processing...";
-            statusMsg.style.color = "#f39c12";
-            csDisplay.innerText = "";
-            loader.style.display = "block";
-            
-            // Opsyonal: Beep sound agad para alam ng user na pumasok
-            // beep.play(); 
-
+        async function startScanner() {
+            const html5QrCode = new Html5Qrcode("reader");
             try {
-                // --- STEP B: BACKGROUND SYNC ---
-                const response = await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Mahalaga ito kung direct Fetch ang gamit
-                    cache: 'no-cache',
-                    body: JSON.stringify({ barcode: barcode })
-                });
-
-                // Tandaan: Sa 'no-cors' mode, hindi natin mababasa ang JSON response.
-                // Kung gusto mong mabasa ang SUCCESS/ERROR at CS No, 
-                // kailangang gamitin ang google.script.run (kung naka-embed sa Sheets)
-                // O kaya ay i-configure ang CORS sa Apps Script.
-                
-                // GAMITIN ITO KUNG NAKA-EMBED SA GOOGLE SHEETS (HTML SERVICE):
-                google.script.run
-                    .withSuccessHandler(function(data) {
-                        loader.style.display = "none";
-                        const result = JSON.parse(data);
-                        
-                        if(result.status === "success") {
-                            statusMsg.innerText = "✅ SUCCESS";
-                            statusMsg.style.color = "#27ae60";
-                            csDisplay.innerText = result.csNo;
-                        } else {
-                            statusMsg.innerText = result.message;
-                            statusMsg.style.color = "#c0392b";
+                await html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    { fps: 25, qrbox: { width: 250, height: 150 } }, // Tinaasan ang FPS para mas mabilis makabasa
+                    (decodedText) => {
+                        if (/^\d{10}$/.test(decodedText) && !isLocked) {
+                            syncToSheets(decodedText);
                         }
-                    })
-                    .doPost_From_UI({ "barcode": barcode }); // Custom function name sa Code.gs
-
-            } catch (error) {
-                statusMsg.innerText = "❌ Connection Error";
-                statusMsg.style.color = "#c0392b";
-                loader.style.display = "none";
+                    }
+                );
+                updateStatus("Scanner Ready", "active");
+            } catch (err) { 
+                updateStatus("Camera Error", "warning"); 
             }
-
-            // --- STEP C: READY ULIT AGAD ---
-            barcodeInput.focus();
         }
 
-        // Bridge function para sa UI to Script communication
-        // Idagdag mo ito sa Code.gs mo
+        async function syncToSheets(code) {
+            isLocked = true; // Lock para hindi mag-double scan habang nag-o-on progress ang fetch
+            updateStatus("Checking: " + code, "active");
+
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: "POST",
+                    body: JSON.stringify({ barcode: code })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === "error") {
+                    // DUPLICATE FOUND
+                    errSound.play();
+                    updateStatus("DUPLICATE: " + code, "warning");
+                    // Tinanggal ang alert() para hindi huminto ang workflow. 
+                    // Makikita naman sa status bar na Red ang kulay.
+                } else {
+                    // SUCCESS
+                    const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    saveToLocalHistory(result.barcode, result.csNo, ts);
+                    beep.play();
+                    updateStatus("✅ CS: " + result.csNo, "success");
+                }
+
+            } catch (e) {
+                console.error(e);
+                updateStatus("Connection Error", "warning");
+            }
+
+            // INSTANT RESET: Imbes na 3000ms (3 seconds), gagawin nating 500ms 
+            // para lang hindi mag-loop scan sa iisang barcode pero "ready" na agad.
+            setTimeout(() => { 
+                isLocked = false; 
+                if(!statusDiv.innerText.includes("DUPLICATE")) {
+                    updateStatus("Scanner Ready", "active");
+                }
+            }, 500); 
+        }
+
+        function saveToLocalHistory(barcode, csNo, time) {
+            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
+            history.unshift({ barcode, csNo, time });
+            if(history.length > 100) history.pop(); 
+            localStorage.setItem('scanHistory_B2', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
+            if (history.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:20px;">No history found</td></tr>';
+                return;
+            }
+            historyBody.innerHTML = history.map(item => `
+                <tr>
+                    <td>
+                        <strong>${item.barcode}</strong>
+                        <span class="time-val">${item.time}</span>
+                    </td>
+                    <td class="cs-val">${item.csNo}</td>
+                </tr>
+            `).join('');
+        }
+
+        function clearHistory() {
+            if(confirm("Buharin lahat ng history sa phone na ito?")) {
+                localStorage.removeItem('scanHistory_B2');
+                renderHistory();
+            }
+        }
+
+        function updateStatus(msg, type) {
+            statusDiv.innerText = msg;
+            statusDiv.className = "status " + type;
+        }
     </script>
-</body>
-</html>
