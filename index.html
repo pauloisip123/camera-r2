@@ -23,7 +23,6 @@
             100% { transform: translateX(0); }
         }
 
-        /* History Section */
         .history-card { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); box-sizing: border-box; }
         .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
         .history-header h4 { margin: 0; color: #333; }
@@ -60,8 +59,7 @@
                         <th>C/S NO.</th>
                     </tr>
                 </thead>
-                <tbody id="historyBody">
-                    </tbody>
+                <tbody id="historyBody"></tbody>
             </table>
         </div>
     </div>
@@ -70,7 +68,6 @@
     <audio id="error-sound" src="https://www.soundjay.com/buttons/beep-05.wav" preload="auto"></audio>
 
     <script>
-        // --- ILAGAY DITO ANG IYONG GOOGLE SCRIPT URL ---
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZM96PYBsGWpLBoejJg2B9nlvd0CfP_jW0YvegKactsICo5L3EiQyn1s546pt8AGCh/exec';
         
         const statusDiv = document.getElementById('status');
@@ -79,7 +76,6 @@
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
 
-        // Load data on start
         window.onload = () => {
             renderHistory();
             startScanner();
@@ -92,7 +88,6 @@
                     { facingMode: "environment" }, 
                     { fps: 20, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
-                        // Dapat 10 digits at hindi naka-lock ang scanner
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncToSheets(decodedText);
                         }
@@ -117,12 +112,10 @@
                 const result = await response.json();
                 
                 if (result.status === "error") {
-                    // DUPLICATE FOUND
                     errSound.play();
                     updateStatus("DUPLICATE: " + code, "warning");
-                    alert("⚠️ DUPLICATE DETECTED!\nBarcode: " + code + " is already in the sheet.");
+                    // Tinanggal ang alert para hindi huminto ang flow ng user
                 } else {
-                    // SUCCESS
                     const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     saveToLocalHistory(result.barcode, result.csNo, ts);
                     beep.play();
@@ -134,19 +127,17 @@
                 updateStatus("Connection Error", "warning");
             }
 
-            // Cooldown 3 seconds bago pwedeng mag-scan ulit
+            // --- RESET TIMER: 1 SECOND LANG ---
             setTimeout(() => { 
                 isLocked = false; 
-                if(!statusDiv.innerText.includes("DUPLICATE")) {
-                    updateStatus("Scanner Ready", "active");
-                }
-            }, 3000);
+                updateStatus("Scanner Ready", "active");
+            }, 1000); 
         }
 
         function saveToLocalHistory(barcode, csNo, time) {
             let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
             history.unshift({ barcode, csNo, time });
-            if(history.length > 100) history.pop(); // Limit to 100 rows
+            if(history.length > 100) history.pop();
             localStorage.setItem('scanHistory_B2', JSON.stringify(history));
             renderHistory();
         }
@@ -182,28 +173,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
