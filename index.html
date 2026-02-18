@@ -61,7 +61,7 @@
                     </tr>
                 </thead>
                 <tbody id="historyBody">
-                </tbody>
+                    </tbody>
             </table>
         </div>
     </div>
@@ -70,7 +70,7 @@
     <audio id="error-sound" src="https://www.soundjay.com/buttons/beep-05.wav" preload="auto"></audio>
 
     <script>
-        // --- IYONG GOOGLE SCRIPT URL ---
+        // --- ILAGAY DITO ANG IYONG GOOGLE SCRIPT URL ---
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxg5BCQsBcU1bQ0cBjy1z84FgFIBhdNDN-L0iXGc9CjXbVZE3BoCCVr-6jc7fx1k9r6/exec';
         
         const statusDiv = document.getElementById('status');
@@ -79,6 +79,7 @@
         const historyBody = document.getElementById('historyBody');
         let isLocked = false;
 
+        // Load data on start
         window.onload = () => {
             renderHistory();
             startScanner();
@@ -89,12 +90,9 @@
             try {
                 await html5QrCode.start(
                     { facingMode: "environment" }, 
-                    { 
-                        fps: 25, // TINAASAN ANG FPS PARA MABILIS MA-CAPTURE
-                        qrbox: { width: 250, height: 150 },
-                        aspectRatio: 1.0
-                    },
+                    { fps: 20, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
+                        // Dapat 10 digits at hindi naka-lock ang scanner
                         if (/^\d{10}$/.test(decodedText) && !isLocked) {
                             syncToSheets(decodedText);
                         }
@@ -107,29 +105,24 @@
         }
 
         async function syncToSheets(code) {
-            isLocked = true; // Lock agad para iwas double scan
+            isLocked = true;
             updateStatus("Checking: " + code, "active");
 
             try {
                 const response = await fetch(GOOGLE_SCRIPT_URL, {
                     method: "POST",
-                    mode: 'no-cors', // Para sa mas mabilis na network handshake
                     body: JSON.stringify({ barcode: code })
                 });
                 
-                // Dahil naka 'no-cors', hindi natin mababasa ang JSON response directly sa fetch standard.
-                // Pero dahil kailangan natin ang result.status, ibabalik natin sa normal fetch pero optimized:
-                const fastResponse = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: "POST",
-                    body: JSON.stringify({ barcode: code })
-                });
-                const result = await fastResponse.json();
+                const result = await response.json();
                 
                 if (result.status === "error") {
+                    // DUPLICATE FOUND
                     errSound.play();
                     updateStatus("DUPLICATE: " + code, "warning");
-                    // Inalis ang alert() para hindi ma-stuck ang scanner
+                    alert("⚠️ DUPLICATE DETECTED!\nBarcode: " + code + " is already in the sheet.");
                 } else {
+                    // SUCCESS
                     const ts = new Date().toLocaleString('en-PH', { hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     saveToLocalHistory(result.barcode, result.csNo, ts);
                     beep.play();
@@ -141,21 +134,19 @@
                 updateStatus("Connection Error", "warning");
             }
 
-            // --- SPEED OPTIMIZATION ---
-            // Mula 3 seconds, ginawang 300ms (0.3s) na lang ang cooldown. 
-            // Halos instant na ang pagiging "Ready" pagkatapos ng scan.
+            // Cooldown 3 seconds bago pwedeng mag-scan ulit
             setTimeout(() => { 
                 isLocked = false; 
                 if(!statusDiv.innerText.includes("DUPLICATE")) {
                     updateStatus("Scanner Ready", "active");
                 }
-            }, 300); 
+            }, 3000);
         }
 
         function saveToLocalHistory(barcode, csNo, time) {
             let history = JSON.parse(localStorage.getItem('scanHistory_B2') || "[]");
             history.unshift({ barcode, csNo, time });
-            if(history.length > 100) history.pop(); 
+            if(history.length > 100) history.pop(); // Limit to 100 rows
             localStorage.setItem('scanHistory_B2', JSON.stringify(history));
             renderHistory();
         }
@@ -178,7 +169,7 @@
         }
 
         function clearHistory() {
-            if(confirm("Burahin lahat ng history sa phone na ito?")) {
+            if(confirm("Buharin lahat ng history sa phone na ito?")) {
                 localStorage.removeItem('scanHistory_B2');
                 renderHistory();
             }
@@ -191,5 +182,25 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
